@@ -354,7 +354,7 @@ Public Function GetOriginalDbFullPathFromSource(strFolder As String) As String
     Else
         ' Look up file name from VBE project file name
         Set dContents = ReadJsonFile(strPath)
-        strFile = dNZ(dContents, "Items\FileName")
+        strFile = Format(Now, "ddmmyyyy_hhmm") + " " + dNZ(dContents, "Items\FileName")
         
         ' Convert legacy relative path
         If Left$(strFile, 4) = "rel:" Then strFile = Mid$(strFile, 5)

@@ -287,6 +287,7 @@ Public Sub Build(strSourceFolder As String, blnFullBuild As Boolean)
             MsgBox2 "Unable to determine database file name", "Required source files were not found or could not be decrypted:", strSourceFolder, vbExclamation
             Exit Sub
         End If
+        strPath = InputBox("Get new Databasename", "Database Name", strPath)
     Else
         ' Run any pre-merge instructions
         'strText = dNZ(Options.GitSettings, "RunBeforeMerge")
@@ -304,7 +305,7 @@ Public Sub Build(strSourceFolder As String, blnFullBuild As Boolean)
     Perf.StartTiming
     
     ' Check if we are building the add-in file
-    If FSO.GetFileName(strPath) = CodeProject.Name Then
+    If InStr(1, FSO.GetFileName(strPath), CodeProject.Name) > 0 Then
         ' When building this add-in file, we should output to the debug
         ' window instead of the GUI form. (Since we are importing
         ' a form with the same name as the GUI form.)

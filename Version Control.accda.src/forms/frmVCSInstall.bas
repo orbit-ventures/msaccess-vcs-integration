@@ -18,9 +18,9 @@ Begin Form
     DatasheetFontHeight =11
     ItemSuffix =39
     Left =3225
-    Top =2430
-    Right =22695
-    Bottom =15015
+    Top =2775
+    Right =22470
+    Bottom =15165
     RecSrcDt = Begin
         0x79e78b777268e540
     End
@@ -754,16 +754,16 @@ Begin Form
                     OverlapFlags =85
                     Left =300
                     Top =4260
-                    Width =3375
-                    Height =240
+                    Width =3420
+                    Height =285
                     FontSize =10
                     Name ="Label32"
-                    Caption ="joyfullservice/msaccess-vcs-integration"
+                    Caption ="orbit-ventures/msaccess-vcs-integration"
                     VerticalAnchor =1
                     LayoutCachedLeft =300
                     LayoutCachedTop =4260
-                    LayoutCachedWidth =3675
-                    LayoutCachedHeight =4500
+                    LayoutCachedWidth =3720
+                    LayoutCachedHeight =4545
                     BorderThemeColorIndex =1
                     BorderTint =100.0
                     BorderShade =50.0

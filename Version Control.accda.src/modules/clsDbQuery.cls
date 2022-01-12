@@ -18,8 +18,7 @@ Option Compare Database
 Option Explicit
 
 Private m_Query As AccessObject
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_AllItems As Collection
 Private m_blnModifiedOnly As Boolean
 
 ' This requires us to use all the public methods and properties of the implemented class
@@ -36,13 +35,13 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
+Private Sub IDbComponent_Export()
     
     Dim strFile As String
     Dim dbs As DAO.Database
 
     ' Save and sanitize file
-    SaveComponentAsText acQuery, m_Query.Name, Nz2(strAlternatePath, IDbComponent_SourceFile)
+    SaveComponentAsText acQuery, m_Query.Name, IDbComponent_SourceFile
     VCSIndex.Update Me, eatExport
     
     ' Export as SQL (if using that option)
@@ -130,22 +129,22 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim qry As AccessObject
     Dim cQuery As IDbComponent
 
     ' Build collection if not already cached
     If m_AllItems Is Nothing Or (blnModifiedOnly <> m_blnModifiedOnly) Then
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         m_blnModifiedOnly = blnModifiedOnly
         For Each qry In CurrentData.AllQueries
             Set cQuery = New clsDbQuery
             Set cQuery.DbObject = qry
             If blnModifiedOnly Then
-                If cQuery.IsModified Then m_AllItems.Add cQuery.SourceFile, cQuery
+                If cQuery.IsModified Then m_AllItems.Add cQuery, qry.Name
             Else
-                m_AllItems.Add cQuery.SourceFile, cQuery
+                m_AllItems.Add cQuery, qry.Name
             End If
         Next qry
     End If
@@ -163,9 +162,8 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.bas")
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.bas")
 End Function
 
 
@@ -182,18 +180,6 @@ End Sub
 
 
 '---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
-    RemoveOrphanedDatabaseObjects Me
-End Sub
-
-
-'---------------------------------------------------------------------------------------
 ' Procedure : IsModified
 ' Author    : Adam Waller
 ' Date      : 11/21/2020
@@ -202,7 +188,7 @@ End Sub
 '---------------------------------------------------------------------------------------
 '
 Public Function IDbComponent_IsModified() As Boolean
-    IDbComponent_IsModified = (m_Query.DateModified > VCSIndex.Item(Me).ExportDate)
+    IDbComponent_IsModified = (m_Query.DateModified > VCSIndex.GetExportDate(Me))
 End Function
 
 
@@ -216,7 +202,6 @@ End Function
 '---------------------------------------------------------------------------------------
 '
 Private Function IDbComponent_DateModified() As Date
-    If m_Query Is Nothing Then Exit Function
     IDbComponent_DateModified = m_Query.DateModified
 End Function
 
@@ -267,7 +252,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Query Is Nothing Then Exit Property
     IDbComponent_Name = m_Query.Name
 End Property
 
@@ -280,7 +264,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_SourceFile() As String
-    If m_Query Is Nothing Then Exit Property
     IDbComponent_SourceFile = IDbComponent_BaseFolder & GetSafeFileName(m_Query.Name) & ".bas"
 End Property
 

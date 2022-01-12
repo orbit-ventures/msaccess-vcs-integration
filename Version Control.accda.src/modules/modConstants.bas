@@ -43,13 +43,13 @@ End Enum
 ' same value.
 Public Enum eDatabaseComponentType
     ' Standard database objects
-    edbForm = acForm
-    edbMacro = acMacro
-    edbModule = acModule
-    edbQuery = acQuery
-    edbReport = acReport
-    edbTableDef = acTable
-    edbTableDataMacro = acTableDataMacro
+    edbForm
+    edbMacro
+    edbModule
+    edbQuery
+    edbReport
+    edbTableDef
+    edbTableDataMacro
     edbLinkedTable
     ' ADP specific
     edbAdpTable
@@ -99,5 +99,4 @@ End Enum
 Public Enum eResolveConflict
     ercSkip
     ercOverwrite
-    ercDelete
 End Enum

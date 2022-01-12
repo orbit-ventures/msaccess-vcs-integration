@@ -10,7 +10,6 @@ Option Compare Database
 Option Private Module
 Option Explicit
 
-Private Const ModuleName As String = "modFileAccess"
 
 Private Declare PtrSafe Function getTempPath Lib "kernel32" Alias "GetTempPathA" ( _
     ByVal nBufferLength As Long, _
@@ -27,7 +26,7 @@ Private Declare PtrSafe Function getTempFileName Lib "kernel32" Alias "GetTempFi
 ' Procedure : GetTempFile
 ' Author    : Adapted by Adam Waller
 ' Date      : 1/23/2019
-' Purpose   : Generate Random / Unique temporary file name. (Also creates the file)
+' Purpose   : Generate Random / Unique temporary file name.
 '---------------------------------------------------------------------------------------
 '
 Public Function GetTempFile(Optional strPrefix As String = "VBA") As String
@@ -39,40 +38,6 @@ Public Function GetTempFile(Optional strPrefix As String = "VBA") As String
     lngReturn = getTempPath(512, strPath)
     lngReturn = getTempFileName(strPath, strPrefix, 0, strName)
     If lngReturn <> 0 Then GetTempFile = Left$(strName, InStr(strName, vbNullChar) - 1)
-    
-End Function
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : GetTempFolder
-' Author    : Adam Waller
-' Date      : 9/24/2021
-' Purpose   : Get a random unique folder name and create the folder.
-'---------------------------------------------------------------------------------------
-'
-Public Function GetTempFolder(Optional strPrefix As String = "VBA") As String
-
-    Dim strPath As String
-    Dim strFile As String
-    Dim strFolder As String
-    
-    ' Generate a random temporary file name, and delete the temp file
-    strPath = GetTempFile(strPrefix)
-    DeleteFile strPath
-    
-    ' Change path to use underscore instead of period.
-    strFile = PathSep & FSO.GetFileName(strPath)
-    strFolder = Replace(strFile, ".", "_")
-    strPath = Replace(strPath, strFile, strFolder)
-
-    If FSO.FolderExists(strPath) Then
-        ' Oops, this folder already exists. Try again.
-        GetTempFolder = GetTempFolder(strPrefix)
-    Else
-        ' Create folder and return path
-        FSO.CreateFolder strPath
-        GetTempFolder = strPath
-    End If
     
 End Function
 
@@ -140,17 +105,7 @@ Public Sub WriteFile(strText As String, strPath As String, Optional strEncoding 
         If Right(strText, 2) <> vbCrLf Then .WriteText vbCrLf
         ' Write to disk
         VerifyPath strPath
-        ' Watch out for possible write error
-        If DebugMode(True) Then On Error Resume Next Else On Error Resume Next
         .SaveToFile strPath, adSaveCreateOverWrite
-        If Catch(3004) Then
-            ' File is locked. Try again after 1 second, just in case something
-            ' like Google Drive momentarily locked the file.
-            Err.Clear
-            Pause 1
-            .SaveToFile strPath, adSaveCreateOverWrite
-        End If
-        CatchAny eelError, "Error writing file: " & strPath, ModuleName & ".WriteFile"
         .Close
     End With
     
@@ -344,22 +299,20 @@ End Function
 '           : Wildcards are supported.
 '---------------------------------------------------------------------------------------
 '
-Public Function GetFilePathsInFolder(strFolder As String, Optional strFilePattern As String = "*.*") As Dictionary
+Public Function GetFilePathsInFolder(strFolder As String, Optional strFilePattern As String = "*.*") As Collection
     
     Dim oFile As Scripting.File
     Dim strBaseFolder As String
     
     strBaseFolder = StripSlash(strFolder)
-    Set GetFilePathsInFolder = New Dictionary
+    Set GetFilePathsInFolder = New Collection
     
-    Perf.OperationStart "Get File List"
     If FSO.FolderExists(strBaseFolder) Then
         For Each oFile In FSO.GetFolder(strBaseFolder).Files
             ' Add files that match the pattern.
-            If oFile.Name Like strFilePattern Then GetFilePathsInFolder.Add oFile.Path, vbNullString
+            If oFile.Name Like strFilePattern Then GetFilePathsInFolder.Add oFile.Path
         Next oFile
     End If
-    Perf.OperationEnd
     
 End Function
 
@@ -371,17 +324,17 @@ End Function
 ' Purpose   : Return a collection of subfolders inside a folder.
 '---------------------------------------------------------------------------------------
 '
-Public Function GetSubfolderPaths(strPath As String) As Dictionary
+Public Function GetSubfolderPaths(strPath As String) As Collection
 
     Dim strBase As String
     Dim oFolder As Scripting.Folder
     
-    Set GetSubfolderPaths = New Dictionary
+    Set GetSubfolderPaths = New Collection
     
     strBase = StripSlash(strPath)
     If FSO.FolderExists(strBase) Then
         For Each oFolder In FSO.GetFolder(strBase).SubFolders
-            GetSubfolderPaths.Add oFolder.Path, vbNullString
+            GetSubfolderPaths.Add oFolder.Path
         Next oFolder
     End If
     

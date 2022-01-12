@@ -16,10 +16,10 @@ Begin Form
     Width =9360
     DatasheetFontHeight =11
     ItemSuffix =32
-    Left =3225
-    Top =2775
-    Right =22470
-    Bottom =15165
+    Left =10170
+    Top =-15195
+    Right =29625
+    Bottom =-2595
     OnUnload ="[Event Procedure]"
     RecSrcDt = Begin
         0x79e78b777268e540
@@ -1291,7 +1291,6 @@ Begin Form
                     Height =2400
                     FontSize =10
                     TabIndex =3
-                    BackColor =15130848
                     ForeColor =5324600
                     Name ="txtDescription"
                     TextFormat =1
@@ -1301,7 +1300,6 @@ Begin Form
                     LayoutCachedTop =3300
                     LayoutCachedWidth =2760
                     LayoutCachedHeight =5700
-                    BackThemeColorIndex =-1
                     BorderThemeColorIndex =0
                     BorderTint =50.0
                     BorderShade =100.0
@@ -1419,10 +1417,10 @@ Begin Form
                     PressedColor =13072231
                     PressedThemeColorIndex =-1
                     PressedShade =100.0
-                    WebImagePaddingLeft =8
-                    WebImagePaddingTop =8
-                    WebImagePaddingRight =9
-                    WebImagePaddingBottom =9
+                    WebImagePaddingLeft =9
+                    WebImagePaddingTop =9
+                    WebImagePaddingRight =10
+                    WebImagePaddingBottom =10
                     Overlaps =1
                 End
                 Begin Label
@@ -1518,10 +1516,10 @@ Begin Form
                     PressedColor =13072231
                     PressedThemeColorIndex =-1
                     PressedShade =100.0
-                    WebImagePaddingLeft =8
-                    WebImagePaddingTop =8
-                    WebImagePaddingRight =9
-                    WebImagePaddingBottom =9
+                    WebImagePaddingLeft =9
+                    WebImagePaddingTop =9
+                    WebImagePaddingRight =10
+                    WebImagePaddingBottom =10
                     Overlaps =1
                 End
                 Begin Label
@@ -1755,7 +1753,7 @@ Private Sub cmdBuild_Click()
     End If
     
     ' Close the current database if it is currently open.
-    If DatabaseFileOpen Then
+    If Not (CurrentDb Is Nothing And CurrentProject.Connection Is Nothing) Then
         If FolderHasVcsOptionsFile(Options.GetExportFolder) Then
             strMsg(0) = "Build " & GetVBProjectForCurrentDB.Name & " (" & CurrentProject.Name & ") from source?"
             strMsg(1) = "Click 'Yes' to rebuild* this database from source files in this folder:" & vbCrLf & Options.GetExportFolder & vbCrLf & _
@@ -2011,11 +2009,11 @@ Public Sub Form_Load()
     chkFullExport = Not Options.UseFastSave
     
     ' You can only export if you have a database open.
-    cmdExport.Enabled = DatabaseFileOpen
-    chkFullExport.Enabled = DatabaseFileOpen
+    cmdExport.Enabled = DatabaseOpen
+    chkFullExport.Enabled = DatabaseOpen
     
     ' Require full export after options change
-    If DatabaseFileOpen Then
+    If DatabaseOpen Then
         If VCSIndex.OptionsHash <> Options.GetHash Then
             chkFullExport = True
             chkFullExport.Enabled = False

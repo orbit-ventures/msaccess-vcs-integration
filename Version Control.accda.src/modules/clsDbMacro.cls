@@ -18,8 +18,7 @@ Option Compare Database
 Option Explicit
 
 Private m_Macro As AccessObject
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_AllItems As Collection
 Private m_blnModifiedOnly As Boolean
 
 ' This requires us to use all the public methods and properties of the implemented class
@@ -36,8 +35,8 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
-    SaveComponentAsText acMacro, m_Macro.Name, Nz2(strAlternatePath, IDbComponent_SourceFile)
+Private Sub IDbComponent_Export()
+    SaveComponentAsText acMacro, m_Macro.Name, IDbComponent_SourceFile
     VCSIndex.Update Me, eatExport
 End Sub
 
@@ -73,8 +72,7 @@ End Sub
 '---------------------------------------------------------------------------------------
 '
 Private Sub IDbComponent_Merge(strFile As String)
-    DeleteObjectIfExists acMacro, GetObjectNameFromFileName(strFile)
-    IDbComponent_Import strFile
+
 End Sub
 
 
@@ -85,22 +83,21 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim oMac As AccessObject
     Dim cMac As IDbComponent
 
     ' Build collection if not already cached
     If m_AllItems Is Nothing Or (blnModifiedOnly <> m_blnModifiedOnly) Then
-        m_blnModifiedOnly = blnModifiedOnly
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         For Each oMac In CurrentProject.AllMacros
             Set cMac = New clsDbMacro
             Set cMac.DbObject = oMac
             If blnModifiedOnly Then
-                If cMac.IsModified Then m_AllItems.Add cMac.SourceFile, cMac
+                If cMac.IsModified Then m_AllItems.Add cMac, oMac.Name
             Else
-                m_AllItems.Add cMac.SourceFile, cMac
+                m_AllItems.Add cMac, oMac.Name
             End If
         Next oMac
     End If
@@ -118,9 +115,8 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.bas")
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.bas")
 End Function
 
 
@@ -137,18 +133,6 @@ End Sub
 
 
 '---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
-    RemoveOrphanedDatabaseObjects Me
-End Sub
-
-
-'---------------------------------------------------------------------------------------
 ' Procedure : IsModified
 ' Author    : Adam Waller
 ' Date      : 11/21/2020
@@ -157,7 +141,7 @@ End Sub
 '---------------------------------------------------------------------------------------
 '
 Public Function IDbComponent_IsModified() As Boolean
-    IDbComponent_IsModified = (m_Macro.DateModified > VCSIndex.Item(Me).ExportDate)
+    IDbComponent_IsModified = (m_Macro.DateModified > VCSIndex.GetExportDate(Me))
 End Function
 
 
@@ -171,7 +155,6 @@ End Function
 '---------------------------------------------------------------------------------------
 '
 Private Function IDbComponent_DateModified() As Date
-    If m_Macro Is Nothing Then Exit Function
     IDbComponent_DateModified = m_Macro.DateModified
 End Function
 
@@ -222,7 +205,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Macro Is Nothing Then Exit Property
     IDbComponent_Name = m_Macro.Name
 End Property
 
@@ -235,7 +217,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_SourceFile() As String
-    If m_Macro Is Nothing Then Exit Property
     IDbComponent_SourceFile = IDbComponent_BaseFolder & GetSafeFileName(m_Macro.Name) & ".bas"
 End Property
 

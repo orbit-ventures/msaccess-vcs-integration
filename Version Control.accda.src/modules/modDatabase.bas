@@ -40,7 +40,7 @@ Public Function GetDBProperty(strName As String, Optional dbs As DAO.Database) A
     If Not dbs Is Nothing Then
         Set oParent = dbs.Properties
     Else
-        If DatabaseFileOpen Then
+        If DatabaseOpen Then
             ' Get parent container for properties
             If CurrentProject.ProjectType = acADP Then
                 Set oParent = CurrentProject.Properties
@@ -417,30 +417,15 @@ End Sub
 
 
 '---------------------------------------------------------------------------------------
-' Procedure : DatabaseFileOpen
+' Procedure : DatabaseOpen
 ' Author    : Adam Waller
 ' Date      : 7/14/2020
 ' Purpose   : Returns true if a database (or ADP project) is currently open.
 '---------------------------------------------------------------------------------------
 '
-Public Function DatabaseFileOpen() As Boolean
-
-    Dim strTest As String
-    
-    ' See if we have a reference to a CurrentProject object
-    If CurrentProject Is Nothing Then
-        DatabaseFileOpen = False
-    Else
-        ' For ADP projects, CurrentProject may be an invalid object reference
-        ' after the database file (adp) is closed.
-        If DebugMode(True) Then On Error Resume Next Else On Error Resume Next
-        strTest = CurrentProject.FullName
-        CatchAny eelNoError, vbNullString
-        DatabaseFileOpen = (strTest <> vbNullString)
-    End If
-    
-    'DatabaseOpen = Workspaces(0).Databases.Count > 0   ' Another approach (Not ADP compatible)
-    
+Public Function DatabaseOpen() As Boolean
+    DatabaseOpen = Not (CurrentDb Is Nothing And CurrentProject.Connection Is Nothing)
+    'DatabaseOpen = Workspaces(0).Databases.Count > 0   ' Another approach
 End Function
 
 

@@ -18,8 +18,7 @@ Option Compare Database
 Option Explicit
 
 Private m_Report As AccessObject
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_AllItems As Collection
 Private m_blnModifiedOnly As Boolean
 
 ' This requires us to use all the public methods and properties of the implemented class
@@ -36,8 +35,8 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
-    SaveComponentAsText acReport, m_Report.Name, Nz2(strAlternatePath, IDbComponent_SourceFile), Me
+Private Sub IDbComponent_Export()
+    SaveComponentAsText acReport, m_Report.Name, IDbComponent_SourceFile, Me
     VCSIndex.Update Me, eatExport, GetCodeModuleHash(IDbComponent_ComponentType, m_Report.Name)
 End Sub
 
@@ -73,8 +72,7 @@ End Sub
 '---------------------------------------------------------------------------------------
 '
 Private Sub IDbComponent_Merge(strFile As String)
-    DeleteObjectIfExists acReport, GetObjectNameFromFileName(strFile)
-    IDbComponent_Import strFile
+
 End Sub
 
 
@@ -85,22 +83,22 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
 
     Dim rpt As AccessObject
     Dim cReport As IDbComponent
 
     ' Build collection if not already cached
     If m_AllItems Is Nothing Or (blnModifiedOnly <> m_blnModifiedOnly) Then
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         m_blnModifiedOnly = blnModifiedOnly
         For Each rpt In CurrentProject.AllReports
             Set cReport = New clsDbReport
             Set cReport.DbObject = rpt
             If blnModifiedOnly Then
-                If cReport.IsModified Then m_AllItems.Add cReport.SourceFile, cReport
+                If cReport.IsModified Then m_AllItems.Add cReport, rpt.Name
             Else
-                m_AllItems.Add cReport.SourceFile, cReport
+                m_AllItems.Add cReport, rpt.Name
             End If
         Next rpt
     End If
@@ -118,9 +116,8 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.bas")
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.bas")
 End Function
 
 
@@ -139,18 +136,6 @@ End Sub
 
 
 '---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
-    RemoveOrphanedDatabaseObjects Me
-End Sub
-
-
-'---------------------------------------------------------------------------------------
 ' Procedure : IsModified
 ' Author    : Adam Waller
 ' Date      : 11/21/2020
@@ -165,10 +150,10 @@ Public Function IDbComponent_IsModified() As Boolean
     
     ' Check the modified date first.
     ' (This may not reflect some code changes)
-    If m_Report.DateModified <= VCSIndex.Item(Me).ExportDate Then
+    If m_Report.DateModified <= VCSIndex.GetExportDate(Me) Then
             
         ' Date is okay, check hash
-        IDbComponent_IsModified = VCSIndex.Item(Me).Hash <> GetCodeModuleHash(IDbComponent_ComponentType, m_Report.Name)
+        IDbComponent_IsModified = VCSIndex.Item(Me)("Hash") <> GetCodeModuleHash(IDbComponent_ComponentType, m_Report.Name)
     End If
     
 End Function
@@ -184,7 +169,6 @@ End Function
 '---------------------------------------------------------------------------------------
 '
 Private Function IDbComponent_DateModified() As Date
-    If m_Report Is Nothing Then Exit Function
     IDbComponent_DateModified = m_Report.DateModified
 End Function
 
@@ -235,7 +219,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Report Is Nothing Then Exit Property
     IDbComponent_Name = m_Report.Name
 End Property
 
@@ -248,7 +231,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_SourceFile() As String
-    If m_Report Is Nothing Then Exit Property
     IDbComponent_SourceFile = IDbComponent_BaseFolder & GetSafeFileName(m_Report.Name) & ".bas"
 End Property
 

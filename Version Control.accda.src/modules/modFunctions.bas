@@ -48,22 +48,6 @@ End Sub
 
 
 '---------------------------------------------------------------------------------------
-' Procedure : MergeDictionary
-' Author    : Adam Waller
-' Date      : 5/27/2021
-' Purpose   : Merge a dictionary into another dictionary. (Does not check for duplicate
-'           : key values, which will throw an error.)
-'---------------------------------------------------------------------------------------
-'
-Public Sub MergeDictionary(ByRef dOriginal As Dictionary, ByVal dToAdd As Dictionary)
-    Dim varKey As Variant
-    For Each varKey In dToAdd.Keys
-        dOriginal.Add varKey, dToAdd(varKey)
-    Next varKey
-End Sub
-
-
-'---------------------------------------------------------------------------------------
 ' Procedure : GetVBEExtByType
 ' Author    : Adam Waller
 ' Date      : 6/2/2015
@@ -228,9 +212,9 @@ Public Function MsgBox2(strBold As String, Optional strLine1 As String, Optional
     
     If varLines(3) = vbNullString Then varLines(3) = Application.VBE.ActiveVBProject.Name
     strMsg = "MsgBox('" & varLines(0) & "@" & varLines(1) & "@" & varLines(2) & "@'," & intButtons & ",'" & varLines(3) & "')"
-    Perf.PauseTiming
+    Perf.OperationStart "Wait for MsgBox Response"
     MsgBox2 = Eval(strMsg)
-    Perf.ResumeTiming
+    Perf.OperationEnd
     
     ' Restore MousePointer (if needed)
     If intCursor > 0 Then Screen.MousePointer = intCursor
@@ -308,42 +292,6 @@ Public Function dNZ(dObject As Dictionary, strPath As String, Optional strDelimi
         End If
     Next intCnt
 
-End Function
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : KeyExists
-' Author    : Adam Waller
-' Date      : 5/28/2021
-' Purpose   : Returns true if the specified nested segment is found to exist.
-'           : Note that this currently only supports nested child dictionary objects,
-'           : not nested collections.
-'---------------------------------------------------------------------------------------
-'
-Public Function KeyExists(dDictionary As Dictionary, ParamArray varSegmentKeys()) As Boolean
-    
-    Dim intSegment As Integer
-    Dim dBase As Dictionary
-    
-    ' Bail out if no valid dictionary passed
-    If dDictionary Is Nothing Then Exit Function
-    
-    ' Start with based dictionary
-    Set dBase = dDictionary
-    KeyExists = True
-    
-    ' Loop through segments, confirming that each one exists
-    For intSegment = 0 To UBound(varSegmentKeys)
-        If dBase.Exists(varSegmentKeys(intSegment)) Then
-            If intSegment < UBound(varSegmentKeys) Then
-                Set dBase = dBase(varSegmentKeys(intSegment))
-            End If
-        Else
-            KeyExists = False
-            Exit For
-        End If
-    Next intSegment
-    
 End Function
 
 
@@ -566,9 +514,7 @@ End Function
 '---------------------------------------------------------------------------------------
 '
 Public Sub Pause(sngSeconds As Single)
-    If sngSeconds > 0.1 Then Perf.OperationStart "Pause execution"
     Sleep sngSeconds * 1000
-    If sngSeconds > 0.1 Then Perf.OperationEnd
 End Sub
 
 

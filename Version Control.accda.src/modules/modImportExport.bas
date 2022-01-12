@@ -20,22 +20,16 @@ Private Const ModuleName As String = "modImportExport"
 '
 Public Sub ExportSource(blnFullExport As Boolean)
 
-    Dim dCategories As Dictionary
-    Dim colCategories As Collection
-    Dim varCategory As Variant
-    Dim dCategory As Dictionary
-    Dim dObjects As Dictionary
-    Dim varCatKey As Variant
-    Dim varKey As Variant
     Dim cCategory As IDbComponent
     Dim cDbObject As IDbComponent
+    Dim sngStart As Single
     Dim lngCount As Long
     
     ' Use inline error handling functions to trap and log errors.
     If DebugMode(True) Then On Error GoTo 0 Else On Error Resume Next
     
     ' Can't export without an open database
-    If Not DatabaseFileOpen Then Exit Sub
+    If CurrentDb Is Nothing And CurrentProject.Connection Is Nothing Then Exit Sub
     
     ' If we are running this from the current database, we need to run it a different
     ' way to prevent file corruption issues.
@@ -63,16 +57,19 @@ Public Sub ExportSource(blnFullExport As Boolean)
     ' If options (or VCS version) have changed, a full export will be required
     If (VCSIndex.OptionsHash <> Options.GetHash) Then blnFullExport = True
 
+    ' Begin timer at start of export.
+    sngStart = Timer
+
     ' Display heading
-    With Log
-        .Spacer
-        .Add "Beginning Export of Source Files", False
-        .Add CurrentProject.Name
-        .Add "VCS Version " & GetVCSVersion
-        .Add "Full Path: " & CurrentProject.FullName, False
-        .Add "Export Folder: " & Options.GetExportFolder, False
-        .Add IIf(blnFullExport, "Performing Full Export", "Using Fast Save")
-        .Add Now
+    With Options
+        '.ShowDebug = True
+        '.UseFastSave = False
+        Log.Spacer
+        Log.Add "Beginning Export of all Source", False
+        Log.Add CurrentProject.Name
+        Log.Add "VCS Version " & GetVCSVersion
+        Log.Add IIf(blnFullExport, "Performing Full Export", "Using Fast Save")
+        Log.Add Now
     End With
     
     ' Run any custom sub before export
@@ -86,59 +83,20 @@ Public Sub ExportSource(blnFullExport As Boolean)
 
     ' Finish header section
     Log.Spacer
-    Log.Add "Scanning " & IIf(blnFullExport, "source files...", "for changes...")
     Log.Flush
     
-    ' Scan database objects for changes
-    Set dCategories = New Dictionary
-    VCSIndex.Conflicts.Initialize dCategories
-    Perf.OperationStart "Scan DB Objects"
-    For Each cCategory In GetAllContainers
-        Set dCategory = New Dictionary
-        dCategory.Add "Class", cCategory
-        ' Get collection of database objects (IDbComponent classes)
-        Set dObjects = cCategory.GetAllFromDB(Not blnFullExport)
-        If dObjects.Count = 0 Then
-            Log.Add IIf(blnFullExport, "No ", "No modified ") & _
-                LCase(cCategory.Category) & " found in this database.", Options.ShowDebug
-        End If
-        dCategory.Add "Objects", dObjects
-        dCategories.Add cCategory.Category, dCategory
-        VCSIndex.CheckExportConflicts dObjects
-        ' Clear any orphaned files in this category
-        cCategory.ClearOrphanedSourceFiles
-    Next cCategory
-    Perf.OperationEnd
-    
-    ' Check for any conflicts
-    With VCSIndex.Conflicts
-        If .Count > 0 Then
-            ' Show the conflicts resolution dialog
-            .ShowDialog
-            If .ApproveResolutions Then
-                Log.Add "Resolving source conflicts", False
-                .Resolve dCategories
-            Else
-                ' Cancel export
-                Log.Add "Export Canceled", , , "Red", True
-                Log.ErrorLevel = eelCritical
-                GoTo CleanUp
-            End If
-        End If
-    End With
-    
     ' Loop through all categories
-    For Each varCatKey In dCategories.Keys
+    For Each cCategory In GetAllContainers
         
-        ' Get category class and collection of items
-        Set dCategory = dCategories(varCatKey)
-        Set cCategory = dCategory("Class")
-        Set dObjects = dCategory("Objects")
+        ' Clear any source files for nonexistant objects
+        cCategory.ClearOrphanedSourceFiles
             
         ' Only show category details when it contains objects
-        lngCount = dObjects.Count
-        If lngCount > 0 Then
-        
+        lngCount = cCategory.Count(Not blnFullExport)
+        If lngCount = 0 Then
+            Log.Spacer Options.ShowDebug
+            Log.Add IIf(blnFullExport, "No ", "No modified ") & LCase(cCategory.Category) & " found in this database.", Options.ShowDebug
+        Else
             ' Show category header and clear out any orphaned files.
             Log.Spacer Options.ShowDebug
             Log.PadRight "Exporting " & LCase(cCategory.Category) & "...", , Options.ShowDebug
@@ -146,14 +104,13 @@ Public Sub ExportSource(blnFullExport As Boolean)
             Perf.ComponentStart cCategory.Category
 
             ' Loop through each object in this category.
-            For Each varKey In dObjects.Keys
-            
+            For Each cDbObject In cCategory.GetAllFromDB(Not blnFullExport)
+                
                 ' Export object
-                Set cDbObject = dObjects(varKey)
+                Log.Increment
                 Log.Add "  " & cDbObject.Name, Options.ShowDebug
                 cDbObject.Export
                 CatchAny eelError, "Error exporting " & cDbObject.Name, ModuleName & ".ExportSource", True, True
-                Log.Increment
                     
                 ' Bail out if we hit a critical error.
                 If Log.ErrorLevel = eelCritical Then Log.Add vbNullString: GoTo CleanUp
@@ -162,7 +119,7 @@ Public Sub ExportSource(blnFullExport As Boolean)
                 ' as database properties. For these, we just need to run the export once.
                 If cCategory.SingleFile Then Exit For
                 
-            Next varKey
+            Next cDbObject
             
             ' Show category wrap-up.
             Log.Add "[" & lngCount & "]" & IIf(Options.ShowDebug, " " & LCase(cCategory.Category) & " processed.", vbNullString)
@@ -170,7 +127,7 @@ Public Sub ExportSource(blnFullExport As Boolean)
             Perf.ComponentEnd lngCount
         End If
         
-    Next varCatKey
+    Next cCategory
     
     ' Run any cleanup routines
     RemoveThemeZipFiles
@@ -186,7 +143,7 @@ Public Sub ExportSource(blnFullExport As Boolean)
     
     ' Show final output and save log
     Log.Spacer
-    Log.Add "Done. (" & Round(Perf.TotalTime, 2) & " seconds)", , False, "green", True
+    Log.Add "Done. (" & Round(Timer - sngStart, 2) & " seconds)", , False, "green", True
         
 CleanUp:
 
@@ -231,12 +188,8 @@ Public Sub Build(strSourceFolder As String, blnFullBuild As Boolean)
     Dim strPath As String
     Dim strBackup As String
     Dim cCategory As IDbComponent
-    Dim dCategories As Dictionary
-    Dim colCategories As Collection
-    Dim varCategory As Variant
-    Dim dCategory As Dictionary
-    Dim dFiles As Dictionary
-    Dim varKey As Variant
+    Dim sngStart As Single
+    Dim colFiles As Collection
     Dim varFile As Variant
     Dim strType As String
     
@@ -249,7 +202,7 @@ Public Sub Build(strSourceFolder As String, blnFullBuild As Boolean)
     
     ' For full builds, close the current database if it is currently open.
     If blnFullBuild Then
-        If DatabaseFileOpen Then
+        If Not (CurrentDb Is Nothing And CurrentProject.Connection Is Nothing) Then
             ' Need to close the current database before we can replace it.
             RunBuildAfterClose strSourceFolder
             Exit Sub
@@ -302,6 +255,7 @@ Public Sub Build(strSourceFolder As String, blnFullBuild As Boolean)
     ' Start log and performance timers
     Log.Clear
     Log.Active = True
+    sngStart = Timer
     Perf.StartTiming
     
     ' Check if we are building the add-in file
@@ -322,8 +276,6 @@ Public Sub Build(strSourceFolder As String, blnFullBuild As Boolean)
         .Add "Beginning " & strType & " from Source", False
         .Add FSO.GetFileName(strPath)
         .Add "VCS Version " & GetVCSVersion
-        .Add "Full Path: " & strPath, False
-        .Add "Source Folder: " & strSourceFolder, False
         .Add Now
         .Spacer
         .Flush
@@ -348,7 +300,7 @@ Public Sub Build(strSourceFolder As String, blnFullBuild As Boolean)
             Application.NewCurrentDatabase strPath, GetFileFormat(strSourceFolder)
         End If
         Perf.OperationEnd
-        If DatabaseFileOpen Then
+        If DatabaseOpen Then
             Log.Add "Created blank database for import. (v" & CurrentProject.FileFormat & ")"
         Else
             CatchAny eelCritical, "Unable to create database file", ModuleName & ".Build"
@@ -374,71 +326,33 @@ Public Sub Build(strSourceFolder As String, blnFullBuild As Boolean)
         
     End If
     
-    ' Build collections of files to import/merge
-    Log.Add "Scanning source files..."
-    Log.Flush
-    Set dCategories = New Dictionary
-    VCSIndex.Conflicts.Initialize dCategories
-    Perf.OperationStart "Scan Source Files"
-    'Set colCategories = GetAllContainers
+    ' Loop through all categories
+    Log.Spacer
     For Each cCategory In GetAllContainers
-        Set dCategory = New Dictionary
-        dCategory.Add "Class", cCategory
+        
         ' Get collection of source files
         If blnFullBuild Then
             ' Return all the source files
-            dCategory.Add "Files", cCategory.GetFileList
+            Set colFiles = cCategory.GetFileList
         Else
             ' Return just the modified source files for merge
             ' (Optionally uses the git integration to determine changes.)
-            dCategory.Add "Files", VCSIndex.GetModifiedSourceFiles(cCategory)
-            ' Record any conflicts for later review
-            VCSIndex.CheckImportConflicts cCategory, dCategory("Files")
+            Set colFiles = VCSIndex.GetModifiedSourceFiles(cCategory)
         End If
-        dCategories.Add cCategory, dCategory
-    Next cCategory
-    Perf.OperationEnd
-    
-    ' Check for any conflicts
-    With VCSIndex.Conflicts
-        If .Count > 0 Then
-            ' Show the conflicts resolution dialog
-            .ShowDialog
-            If .ApproveResolutions Then
-                Log.Add "Resolving source conflicts", False
-                .Resolve dCategories
-            Else
-                ' Cancel build/merge
-                Log.Add "Build Canceled"
-                Log.ErrorLevel = eelCritical
-                GoTo CleanUp
-            End If
-        End If
-    End With
- 
-
-    
-    ' Loop through all categories
-    Log.Spacer
-    For Each varCategory In dCategories.Keys
-        
-        ' Set reference to object category class
-        Set cCategory = varCategory
-        Set dFiles = dCategories(varCategory)("Files")
         
         ' Only show category details when source files are found
-        If dFiles.Count = 0 Then
+        If colFiles.Count = 0 Then
             Log.Spacer Options.ShowDebug
             Log.Add "No " & LCase(cCategory.Category) & " source files found.", Options.ShowDebug
         Else
             ' Show category header
             Log.Spacer Options.ShowDebug
             Log.PadRight IIf(blnFullBuild, "Importing ", "Merging ") & LCase(cCategory.Category) & "...", , Options.ShowDebug
-            Log.ProgMax = dFiles.Count
+            Log.ProgMax = colFiles.Count
             Perf.ComponentStart cCategory.Category
 
             ' Loop through each file in this category.
-            For Each varFile In dFiles.Keys
+            For Each varFile In colFiles
                 ' Import/merge the file
                 Log.Increment
                 Log.Add "  " & FSO.GetFileName(varFile), Options.ShowDebug
@@ -455,10 +369,10 @@ Public Sub Build(strSourceFolder As String, blnFullBuild As Boolean)
             Next varFile
             
             ' Show category wrap-up.
-            Log.Add "[" & dFiles.Count & "]" & IIf(Options.ShowDebug, " " & LCase(cCategory.Category) & " processed.", vbNullString)
-            Perf.ComponentEnd dFiles.Count
+            Log.Add "[" & colFiles.Count & "]" & IIf(Options.ShowDebug, " " & LCase(cCategory.Category) & " processed.", vbNullString)
+            Perf.ComponentEnd colFiles.Count
         End If
-    Next varCategory
+    Next cCategory
     
     ' Initialize forms to ensure that the colors/themes are rendered properly
     ' (This must be done after all objects are imported, since subforms/subreports
@@ -488,7 +402,7 @@ Public Sub Build(strSourceFolder As String, blnFullBuild As Boolean)
     
     ' Show final output and save log
     Log.Spacer
-    Log.Add "Done. (" & Round(Perf.TotalTime, 2) & " seconds)", , False, "green", True
+    Log.Add "Done. (" & Round(Timer - sngStart, 2) & " seconds)", , False, "green", True
 
 CleanUp:
 
@@ -786,5 +700,3 @@ Public Sub InitializeForms()
     CatchAny eelError, "Unhandled error while initializing forms", ModuleName & ".InitializeForms"
     
 End Sub
-
-

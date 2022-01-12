@@ -21,8 +21,7 @@ Option Explicit
 Public Name As String
 Public ID As String
 
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_AllItems As Collection
 
 ' This requires us to use all the public methods and properties of the implemented class
 ' which keeps all the component classes consistent in how they are used in the export
@@ -38,7 +37,7 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
+Private Sub IDbComponent_Export()
     
     Dim dSpec As Dictionary
     Dim dCol As Dictionary
@@ -89,7 +88,7 @@ Private Sub IDbComponent_Export(Optional strAlternatePath As String)
     dSpec.Add "Columns", dCols
     
     ' Write as Json format.
-    WriteJsonFile TypeName(Me), dSpec, Nz2(strAlternatePath, IDbComponent_SourceFile), "Import/Export Specification from MSysIMEXSpecs"
+    WriteJsonFile TypeName(Me), dSpec, IDbComponent_SourceFile, "Import/Export Specification from MSysIMEXSpecs"
     
 End Sub
 
@@ -181,7 +180,7 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim cSpec As clsDbImexSpec
     Dim dbs As DAO.Database
@@ -192,7 +191,7 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
     If m_AllItems Is Nothing Then
         
         ' Set up new collection
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         
         ' This table may not (yet) exist.
         If TableExists("MSysIMEXSpecs") Then
@@ -208,7 +207,7 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
                     Set cSpec = New clsDbImexSpec
                     cSpec.Name = strName
                     cSpec.ID = Nz(!SpecID, 0)
-                    m_AllItems.Add cSpec.Parent.SourceFile, cSpec
+                    m_AllItems.Add cSpec, cSpec.Name
                     .MoveNext
                 Loop
                 .Close
@@ -249,9 +248,8 @@ End Sub
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.json")
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.json")
 End Function
 
 
@@ -264,17 +262,6 @@ End Function
 '
 Private Sub IDbComponent_ClearOrphanedSourceFiles()
     ClearOrphanedSourceFiles Me, "json"
-End Sub
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
 End Sub
 
 

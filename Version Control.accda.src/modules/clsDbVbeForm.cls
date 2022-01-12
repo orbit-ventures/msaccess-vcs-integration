@@ -20,8 +20,7 @@ Option Explicit
 Private Const ModuleName As String = "clsDbVbeForm"
 
 Private m_Form As VBIDE.VBComponent
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_AllItems As Collection
 
 ' This requires us to use all the public methods and properties of the implemented class
 ' which keeps all the component classes consistent in how they are used in the export
@@ -35,14 +34,9 @@ Implements IDbComponent
 ' Author    : Adam Waller
 ' Date      : 4/23/2020
 ' Purpose   : Export the individual database component (table, form, query, etc...)
-'           : NOTE: If there is interest, this could be expanded to implement some
-'           : code to serialize the form to JSON for better integration with version
-'           : control. (Instead of the default binary format that changes with each
-'           : export. See the following link for an example implementation:
-'           : https://github.com/gkuenzli/vbaDeveloper/blob/7665e34b51574d676999e2a55b60c483254c1728/src/vbaDeveloper.xlam/FormSerializer.bas
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
+Private Sub IDbComponent_Export()
     VerifyPath IDbComponent_SourceFile
     m_Form.Export IDbComponent_SourceFile
 End Sub
@@ -108,7 +102,7 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
 
     Dim frm As VBComponent
     Dim cForm As IDbComponent
@@ -116,12 +110,12 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
     ' Build collection if not already cached
     If m_AllItems Is Nothing Then
 
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         For Each frm In GetVBProjectForCurrentDB.VBComponents
             If frm.Type = vbext_ct_MSForm Then
                 Set cForm = New clsDbVbeForm
                 Set cForm.DbObject = frm
-                m_AllItems.Add cForm.SourceFile, cForm
+                m_AllItems.Add cForm, frm.Name
             End If
         Next frm
 
@@ -140,9 +134,8 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.frm")
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.frm")
 End Function
 
 
@@ -155,17 +148,6 @@ End Function
 '
 Private Sub IDbComponent_ClearOrphanedSourceFiles()
     ClearOrphanedSourceFiles Me, "frm", "frx"
-End Sub
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
 End Sub
 
 
@@ -242,7 +224,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Form Is Nothing Then Exit Property
     IDbComponent_Name = m_Form.Name
 End Property
 
@@ -255,7 +236,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_SourceFile() As String
-    If m_Form Is Nothing Then Exit Property
     IDbComponent_SourceFile = IDbComponent_BaseFolder & GetSafeFileName(m_Form.Name) & ".frm"
 End Property
 

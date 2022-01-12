@@ -294,7 +294,7 @@ Public Sub LoadProjectOptions()
 
     ' We can only load the options for the current project if we
     ' have a database file open.
-    If Not DatabaseFileOpen Then Exit Sub
+    If Not DatabaseOpen Then Exit Sub
     
     ' Get saved path from database (if defined)
     strSaved = SavedSourcePath
@@ -646,7 +646,7 @@ Private Sub SetBuildPath()
     Set prp = GetPropertyByName(cstrBuildPathProperty)
 
     ' This should only be done on an open database/project
-    If DatabaseFileOpen Then
+    If DatabaseOpen Then
         ' Check the export folder option
         If Me.ExportFolder = vbNullString Then
             ' When using the default of a blank export path, we don't need
@@ -726,7 +726,7 @@ Private Function GetPropertyByName(strName As String) As AccessObjectProperty
     Dim prp As AccessObjectProperty
     Dim proj As CurrentProject
     
-    If DatabaseFileOpen Then
+    If DatabaseOpen Then
         Set proj = CurrentProject
         For Each prp In proj.Properties
             If prp.Name = strName Then
@@ -737,5 +737,4 @@ Private Function GetPropertyByName(strName As String) As AccessObjectProperty
     End If
     
 End Function
-
 

@@ -18,8 +18,7 @@ Option Compare Database
 Option Explicit
 
 Private m_Table As AccessObject
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_AllItems As Collection
 
 ' This requires us to use all the public methods and properties of the implemented class
 ' which keeps all the component classes consistent in how they are used in the export
@@ -35,13 +34,13 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
+Private Sub IDbComponent_Export()
     
     ' We THINK that this table probably contains a table macro, but just in case it
     ' doesn't, we have some error handling built into the export function below.
     
     ' Save structure in XML format
-    SaveComponentAsText acTableDataMacro, m_Table.Name, Nz2(strAlternatePath, IDbComponent_SourceFile)
+    SaveComponentAsText acTableDataMacro, m_Table.Name, IDbComponent_SourceFile
     
 End Sub
 
@@ -85,7 +84,7 @@ End Sub
 '           : a data macro. https://stackoverflow.com/questions/31755802/
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim dbs As Database
     Dim tdf As TableDef
@@ -95,7 +94,7 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
 
     ' Build collection if not already cached
     If m_AllItems Is Nothing Then
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         Set dbs = CurrentDb
         For Each tdf In dbs.TableDefs
             ' Skip system, temp, and linked tables
@@ -107,7 +106,7 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
                         If DCount("[Name]", "MSysObjects", strSql) > 0 Then
                             Set cTable = New clsDbTableDataMacro
                             Set cTable.DbObject = CurrentData.AllTables(tdf.Name)
-                            m_AllItems.Add cTable.SourceFile, cTable
+                            m_AllItems.Add cTable, tdf.Name
                         End If
                     End If
                 End If
@@ -132,9 +131,8 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.xml")
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.xml")
 End Function
 
 
@@ -147,17 +145,6 @@ End Function
 '
 Private Sub IDbComponent_ClearOrphanedSourceFiles()
     ClearOrphanedSourceFiles Me, "xml"
-End Sub
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
 End Sub
 
 
@@ -184,7 +171,6 @@ End Function
 '---------------------------------------------------------------------------------------
 '
 Private Function IDbComponent_DateModified() As Date
-    If m_Table Is Nothing Then Exit Function
     IDbComponent_DateModified = m_Table.DateModified
 End Function
 
@@ -235,7 +221,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Table Is Nothing Then Exit Property
     IDbComponent_Name = m_Table.Name
 End Property
 
@@ -248,7 +233,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_SourceFile() As String
-    If m_Table Is Nothing Then Exit Property
     IDbComponent_SourceFile = IDbComponent_BaseFolder & GetSafeFileName(m_Table.Name) & ".xml"
 End Property
 

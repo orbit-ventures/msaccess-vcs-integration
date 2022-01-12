@@ -20,19 +20,19 @@ Option Explicit
 ' File name for index
 Private Const cstrFileName As String = "vcs-index.json"
 
+
 ' General properties
 Public MergeBuildDate As Date
 Public FullBuildDate As Date
 Public ExportDate As Date
 Public FullExportDate As Date
 Public OptionsHash As String
-Public Disabled As Boolean
 
 ' Git integration
 Public LastMergedCommit As String
 
 ' Action types for update function
-Public Enum eIndexOperationType
+Public Enum eIndexActionType
     eatExport
     eatImport
 End Enum
@@ -42,7 +42,6 @@ Private m_dIndex As Dictionary
 Private m_dGitIndex As Dictionary
 Private m_strFile As String
 Private m_Git As clsGitIntegration
-Private m_Conflicts As clsConflicts
 
 
 '---------------------------------------------------------------------------------------
@@ -57,10 +56,7 @@ Public Sub LoadFromFile(Optional strFile As String)
     Dim dFile As Dictionary
     Dim dItem As Dictionary
     Dim varKey As Variant
-
-    ' Exit if we have disabled the index functionality
-    If Me.Disabled Then Exit Sub
-
+    
     ' Reset class to blank values
     Call Class_Initialize
         
@@ -104,10 +100,7 @@ Public Sub Save(Optional strInFolder As String)
     Dim varValue As Variant
     Dim dComponents As Dictionary
     Dim strFile As String
-
-    ' Exit if we have disabled the index functionality
-    If Me.Disabled Then Exit Sub
-
+    
     ' Load dictionary from properties
     For Each varKey In m_dIndex.Keys
         If varKey <> "Components" Then
@@ -150,16 +143,13 @@ End Sub
 ' Purpose   : Updates an item in the index.
 '---------------------------------------------------------------------------------------
 '
-Public Function Update(cItem As IDbComponent, intAction As eIndexOperationType, _
+Public Function Update(cItem As IDbComponent, intAction As eIndexActionType, _
     Optional strHash As String, Optional dteDateTime As Date) As Dictionary
     
     Dim dItem As Dictionary
     
-    ' Exit if we have disabled the index functionality
-    If Me.Disabled Then Exit Function
-    
     ' Look up dictionary item, creating if needed.
-    Set dItem = Me.Item(cItem).dParent
+    Set dItem = Me.Item(cItem)
     
     ' Update dictionary values
     With dItem
@@ -202,15 +192,12 @@ End Function
 ' Purpose   : Remove an item from the index when the object and file no longer exist.
 '---------------------------------------------------------------------------------------
 '
-Public Sub Remove(cItem As IDbComponent, Optional strSourceFile As String)
+Public Sub Remove(cItem As IDbComponent)
     
     Dim strFile As String
-
-    ' Exit if we have disabled the index functionality
-    If Me.Disabled Then Exit Sub
-
+    
     ' Get just the file name from the path.
-    strFile = FSO.GetFileName(Nz2(strSourceFile, cItem.SourceFile))
+    strFile = FSO.GetFileName(cItem.SourceFile)
     
     ' Remove dictionary objects.
     With m_dIndex("Components")
@@ -235,48 +222,67 @@ End Sub
 ' Purpose   : Returns a dictionary object with the saved values, creating if needed.
 '---------------------------------------------------------------------------------------
 '
-Public Function Item(cItem As IDbComponent, Optional strSourceFile As String) As clsVCSIndexItem
-
+Public Function Item(cItem As IDbComponent) As Dictionary
+    
     Dim strFile As String
     
-    ' Exit if we have disabled the index functionality
-    If Me.Disabled Then Exit Function
-
     ' Get just the file name from the path.
-    strFile = FSO.GetFileName(Nz2(strSourceFile, cItem.SourceFile))
-    Set Item = LoadItem(cItem, strFile)
+    strFile = FSO.GetFileName(cItem.SourceFile)
+    
+    ' Get or create dictionary objects.
+    With m_dIndex("Components")
+        If Not .Exists(cItem.Category) Then Set .Item(cItem.Category) = New Dictionary
+        If Not .Item(cItem.Category).Exists(strFile) Then Set .Item(cItem.Category)(strFile) = New Dictionary
+        Set Item = .Item(cItem.Category)(strFile)
+    End With
     
 End Function
 
 
 '---------------------------------------------------------------------------------------
-' Procedure : LoadItem
+' Procedure : GetExportDate
 ' Author    : Adam Waller
-' Date      : 9/23/2021
-' Purpose   : Loads the item from the index, creating if it does not exist.
+' Date      : 2/26/2021
+' Purpose   : Return the date/time the index records this item as exported.
 '---------------------------------------------------------------------------------------
 '
-Private Function LoadItem(cItem As IDbComponent, strSourceFile As String) As clsVCSIndexItem
+Public Function GetExportDate(cItem As IDbComponent) As Date
+    GetExportDate = GetDateValue(cItem, "ExportDate")
+End Function
 
-    Dim dItem As Dictionary
+
+'---------------------------------------------------------------------------------------
+' Procedure : GetImportDate
+' Author    : Adam Waller
+' Date      : 2/26/2021
+' Purpose   : Return the date/time the index records this item as imported.
+'---------------------------------------------------------------------------------------
+'
+Public Function GetImportDate(cItem As IDbComponent) As Date
+    GetImportDate = GetDateValue(cItem, "ImportDate")
+End Function
+
+
+'---------------------------------------------------------------------------------------
+' Procedure : GetDateValue
+' Author    : Adam Waller
+' Date      : 2/26/2021
+' Purpose   : Return a date value from an index key (or 0 if missing)
+'---------------------------------------------------------------------------------------
+'
+Private Function GetDateValue(cItem As IDbComponent, strKey As String) As Date
+
+    Dim varDate As Variant
     
-    ' Get or create dictionary objects.
-    With m_dIndex("Components")
-        If Not .Exists(cItem.Category) Then Set .Item(cItem.Category) = New Dictionary
-        If Not .Item(cItem.Category).Exists(strSourceFile) Then Set .Item(cItem.Category)(strSourceFile) = New Dictionary
-        Set dItem = .Item(cItem.Category)(strSourceFile)
-        Set LoadItem = New clsVCSIndexItem
-        With LoadItem
-            ' Load properties to class
-            Set .dParent = dItem
-            .ExportDate = Nz2(dNZ(dItem, "ExportDate"), 0)
-            .ImportDate = Nz2(dNZ(dItem, "ImportDate"), 0)
-            .SourceModified = Nz2(dNZ(dItem, "SourceModified"), 0)
-            .FilePropertiesHash = dNZ(dItem, "FilePropertiesHash")
-            .Hash = dNZ(dItem, "Hash")
-        End With
-    End With
-
+    ' Look for Export Date in dictionary
+    varDate = Item(cItem)(strKey)
+    If IsDate(varDate) Then
+        GetDateValue = CDate(varDate)
+    Else
+        ' Return blank date
+        GetDateValue = 0
+    End If
+    
 End Function
 
 
@@ -412,139 +418,6 @@ End Function
 
 
 '---------------------------------------------------------------------------------------
-' Procedure : Conflicts
-' Author    : Adam Waller
-' Date      : 5/27/2021
-' Purpose   : Expose conflicts as an extension of the index
-'---------------------------------------------------------------------------------------
-'
-Public Function Conflicts() As clsConflicts
-    If m_Conflicts Is Nothing Then Set m_Conflicts = New clsConflicts
-    Set Conflicts = m_Conflicts
-End Function
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : CheckExportConflicts
-' Author    : Adam Waller
-' Date      : 9/15/2021
-' Purpose   : Check for potential conflicts when exporting these items
-'---------------------------------------------------------------------------------------
-'
-Public Sub CheckExportConflicts(dDbComponents As Dictionary)
-    
-    Dim varKey As Variant
-    Dim cItem As IDbComponent
-    
-    ' Loop through all components
-    For Each varKey In dDbComponents.Keys
-        Set cItem = dDbComponents(varKey)
-        If IsExportConflict(cItem) Then
-            ' Add to list of conflicts
-            Me.Conflicts.Add cItem, _
-                CStr(varKey), _
-                Me.Item(cItem).ExportDate, _
-                GetLastModifiedDate(cItem.SourceFile), _
-                ercOverwrite
-        End If
-        ' Exit loop if single source file
-        If cItem.SingleFile Then Exit For
-    Next varKey
-    
-End Sub
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : IsExportConflict
-' Author    : Adam Waller
-' Date      : 9/15/2021
-' Purpose   : Returns true if exporting the item would conflict with an existing file
-'           : that is different AND newer than the last export of this object.
-'---------------------------------------------------------------------------------------
-'
-Private Function IsExportConflict(cItem As IDbComponent) As Boolean
-
-    Dim blnConflict As Boolean
-    Dim strHash As String
-    Dim strFile As String
-    Dim strTempFile As String
-    
-    strFile = cItem.SourceFile
-    
-    ' See if the export file even exists before we worry about conflicts.
-    If FSO.FileExists(strFile) Then
-    
-        ' Get a hash of the file properties
-        strHash = Me.GetFilePropertyHash(strFile)
-    
-        ' Check to see if this object is in the index
-        ' (Has been exported/imported before.)
-        If Me.Exists(cItem, strFile) Then
-        
-            ' Item found in index.
-            ' Check to see if it matches the property hash in the index.
-            If Me.Item(cItem).FilePropertiesHash = strHash Then
-                ' Source file has not changed since last export/import.
-                ' We should be good to overwrite it.
-            Else
-                ' Doesn't match. This could be a conflict, depending on the dates.
-                ' If the modified date of the source file is NEWER than the
-                ' last export date...
-                If Me.Item(cItem).ExportDate < GetLastModifiedDate(strFile) Then
-                    ' ...and the content is different, then we have a conflict.
-                    blnConflict = Not FileContentsMatch(strFile, strTempFile)
-                End If
-            End If
-        Else
-            ' Without an existing index entry, we will need to compare a fresh
-            ' export of the item to the source file and check for differing content.
-            strTempFile = GetTempFile
-            cItem.Export strTempFile
-            blnConflict = Not FileContentsMatch(strFile, strTempFile)
-            DeleteFile strTempFile
-        End If
-    End If
-    
-    ' Return result
-    IsExportConflict = blnConflict
-    
-End Function
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : FileContentsMatch
-' Author    : Adam Waller
-' Date      : 9/15/2021
-' Purpose   : Returns true if the contents of the files match. Starts with the least
-'           : expensive comparison of size, then goes on to compare a hash of the
-'           : full contents.
-'---------------------------------------------------------------------------------------
-'
-Private Function FileContentsMatch(strFile1 As String, strFile2 As String) As Boolean
-    If FSO.FileExists(strFile1) And FSO.FileExists(strFile2) Then
-        If FSO.GetFile(strFile1).Size = FSO.GetFile(strFile2).Size Then
-            If GetFileHash(strFile1) = GetFileHash(strFile2) Then
-                ' The contents of the two files is identical
-                FileContentsMatch = True
-            End If
-        End If
-    End If
-End Function
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : CheckImportConflicts
-' Author    : Adam Waller
-' Date      : 5/27/2021
-' Purpose   : Check for potential conflicts when merging this object.
-'---------------------------------------------------------------------------------------
-'
-Public Sub CheckImportConflicts(cComponent As IDbComponent, dFiles As Dictionary)
-
-End Sub
-
-
-'---------------------------------------------------------------------------------------
 ' Procedure : Git
 ' Author    : Adam Waller
 ' Date      : 1/19/2021
@@ -565,7 +438,7 @@ End Function
 '---------------------------------------------------------------------------------------
 '
 Private Function DefaultFilePath() As String
-    If DatabaseFileOpen Then DefaultFilePath = Options.GetExportFolder & cstrFileName
+    If DatabaseOpen Then DefaultFilePath = Options.GetExportFolder & cstrFileName
 End Function
 
 
@@ -593,6 +466,4 @@ Private Sub Class_Initialize()
     Set m_dGitIndex = Nothing
     
 End Sub
-
-
 

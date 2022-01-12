@@ -20,8 +20,7 @@ Option Explicit
 Private Const ModuleName As String = "clsDbVbeProject"
 
 Private m_Project As VBIDE.VBProject
-Private m_AllItems As Dictionary
-Private m_dItems As Dictionary
+Private m_AllItems As Collection
 
 ' This requires us to use all the public methods and properties of the implemented class
 ' which keeps all the component classes consistent in how they are used in the export
@@ -37,9 +36,18 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
-    WriteJsonFile TypeName(Me), GetDictionary, Nz2(strAlternatePath, IDbComponent_SourceFile), "VBE Project"
-    VCSIndex.Update Me, eatExport, GetDictionaryHash(GetDictionary)
+Private Sub IDbComponent_Export()
+
+    Dim dProject As Dictionary
+    
+    Set dProject = GetDictionary
+    
+    ' Save in JSON format.
+    WriteJsonFile TypeName(Me), dProject, IDbComponent_SourceFile, "VBE Project"
+    
+    ' Save to index
+    VCSIndex.Update Me, eatExport, GetDictionaryHash(dProject)
+    
 End Sub
 
 
@@ -83,7 +91,7 @@ Private Sub IDbComponent_Import(strFile As String)
     CatchAny eelError, "Importing VBE Project", ModuleName & ".Import"
     
     ' Save to index
-    VCSIndex.Update Me, eatImport, GetDictionaryHash(GetDictionary(False))
+    VCSIndex.Update Me, eatImport, GetDictionaryHash(GetDictionary)
 
 End Sub
 
@@ -216,14 +224,7 @@ End Function
 ' Purpose   : Return a dictionary object of project properties.
 '---------------------------------------------------------------------------------------
 '
-Private Function GetDictionary(Optional blnUseCache As Boolean = True) As Dictionary
-
-    ' Check cache parameter
-    If blnUseCache And Not m_dItems Is Nothing Then
-        ' Return cached dictionary
-        Set GetDictionary = m_dItems
-        Exit Function
-    End If
+Private Function GetDictionary() As Dictionary
 
     ' Make sure we have a reference to the VB project
     If m_Project Is Nothing Then Set m_Project = GetVBProjectForCurrentDB
@@ -265,7 +266,7 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim cProj As IDbComponent
 
@@ -273,12 +274,10 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
     If m_AllItems Is Nothing Then
         ' Load class details
         Set m_Project = GetVBProjectForCurrentDB
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         Set cProj = New clsDbVbeProject
         Set cProj.DbObject = m_Project
-        If (Not blnModifiedOnly) Or IDbComponent_IsModified Then
-            m_AllItems.Add cProj.SourceFile, cProj
-        End If
+        m_AllItems.Add cProj, m_Project.Name
     End If
 
     ' Return cached collection
@@ -294,9 +293,9 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    Set IDbComponent_GetFileList = New Dictionary
-    If FSO.FileExists(IDbComponent_SourceFile) Then IDbComponent_GetFileList.Add IDbComponent_SourceFile, vbNullString
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = New Collection
+    If FSO.FileExists(IDbComponent_SourceFile) Then IDbComponent_GetFileList.Add IDbComponent_SourceFile
 End Function
 
 
@@ -312,17 +311,6 @@ End Sub
 
 
 '---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
-End Sub
-
-
-'---------------------------------------------------------------------------------------
 ' Procedure : IsModified
 ' Author    : Adam Waller
 ' Date      : 11/21/2020
@@ -331,7 +319,7 @@ End Sub
 '---------------------------------------------------------------------------------------
 '
 Public Function IDbComponent_IsModified() As Boolean
-    IDbComponent_IsModified = VCSIndex.Item(Me).Hash <> GetDictionaryHash(GetDictionary)
+
 End Function
 
 
@@ -395,7 +383,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Project Is Nothing Then Exit Property
     IDbComponent_Name = m_Project.Name
 End Property
 
@@ -420,7 +407,7 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Count(Optional blnModifiedOnly As Boolean = False) As Long
-    IDbComponent_Count = IDbComponent_GetAllFromDB(blnModifiedOnly).Count
+    IDbComponent_Count = 1
 End Property
 
 
@@ -500,6 +487,4 @@ End Sub
 Public Property Get Parent() As IDbComponent
     Set Parent = Me
 End Property
-
-
 

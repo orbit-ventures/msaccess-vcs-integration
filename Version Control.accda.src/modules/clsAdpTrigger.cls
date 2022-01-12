@@ -23,8 +23,7 @@ Public TableName As String
 Public SchemaName As String
 Public SqlModifyDate As Date
 
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_AllItems As Collection
 
 ' This requires us to use all the public methods and properties of the implemented class
 ' which keeps all the component classes consistent in how they are used in the export
@@ -40,10 +39,10 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
+Private Sub IDbComponent_Export()
 
     ' Write SQL text to file
-    WriteFile GetSQLObjectDefinitionForADP(Me.TriggerName), Nz2(strAlternatePath, IDbComponent_SourceFile)
+    WriteFile GetSQLObjectDefinitionForADP(Me.TriggerName), IDbComponent_SourceFile
     
 End Sub
 
@@ -80,7 +79,7 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim cTrigger As clsAdpTrigger
     Dim cComponent As IDbComponent
@@ -91,7 +90,7 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
     If m_AllItems Is Nothing Then
     
         ' Use parameter options if provided.
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
 
         ' Build list of triggers in database (from sysobjects)
         strSql = "SELECT [name],object_name(parent_object_id) AS parent_name, schema_name([schema_id]) AS [schema_name], modify_date FROM sys.objects WHERE type='TR'"
@@ -107,7 +106,7 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
                     .SqlModifyDate = Nz(rst!modify_date)
                 End With
                 Set cComponent = cTrigger
-                m_AllItems.Add cComponent.SourceFile, cComponent
+                m_AllItems.Add cComponent, cTrigger.TriggerName
                 .MoveNext
             Loop
             .Close
@@ -128,9 +127,8 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.sql")
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.sql")
 End Function
 
 
@@ -143,17 +141,6 @@ End Function
 '
 Private Sub IDbComponent_ClearOrphanedSourceFiles()
     ClearOrphanedSourceFiles Me, "sql"
-End Sub
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
 End Sub
 
 
@@ -180,7 +167,6 @@ End Function
 '---------------------------------------------------------------------------------------
 '
 Private Function IDbComponent_DateModified() As Date
-    If Me.TriggerName = vbNullString Then Exit Function
     IDbComponent_DateModified = GetSQLObjectModifiedDate(Me.TriggerName, estTrigger)
 End Function
 

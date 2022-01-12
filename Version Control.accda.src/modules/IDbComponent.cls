@@ -43,24 +43,13 @@ End Sub
 
 
 '---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub ClearOrphanedDatabaseObjects()
-End Sub
-
-
-'---------------------------------------------------------------------------------------
 ' Procedure : Export
 ' Author    : Adam Waller
 ' Date      : 4/23/2020
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Public Sub Export(Optional strAlternatePath As String)
+Public Sub Export()
 End Sub
 
 
@@ -96,7 +85,7 @@ End Sub
 '           : modified will be returned.
 '---------------------------------------------------------------------------------------
 '
-Public Function GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Public Function GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
 End Function
 
 
@@ -168,7 +157,7 @@ End Property
 '           : Based on the export folder defined in options.
 '---------------------------------------------------------------------------------------
 '
-Public Function GetFileList() As Dictionary
+Public Function GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
 End Function
 
 

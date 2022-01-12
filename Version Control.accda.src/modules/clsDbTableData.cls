@@ -20,9 +20,7 @@ Option Explicit
 Public Format As eTableDataExportFormat
 
 Private m_Table As AccessObject
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
-Private m_blnModifiedOnly As Boolean
+Private m_AllItems As Collection
 
 ' This requires us to use all the public methods and properties of the implemented class
 ' which keeps all the component classes consistent in how they are used in the export
@@ -38,7 +36,7 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
+Private Sub IDbComponent_Export()
     
     Dim strFile As String
     Dim intFormat As eTableDataExportFormat
@@ -75,19 +73,15 @@ End Sub
 '
 Public Sub ExportTableDataAsTDF(strTable As String)
 
-    Dim dbs As DAO.Database
     Dim rst As DAO.Recordset
     Dim fld As DAO.Field
     Dim cData As New clsConcat
     Dim intFields As Integer
     Dim intCnt As Integer
     Dim strText As String
-    Dim lngProgMax As Long
-    Dim lngProgValue As Long
-    
+
     ' Open table in fast read-only view
-    Set dbs = CurrentDb
-    Set rst = dbs.OpenRecordset(GetTableExportSql(strTable), dbOpenSnapshot, dbReadOnly)
+    Set rst = CurrentDb.OpenRecordset(GetTableExportSql(strTable), dbOpenSnapshot, dbOpenForwardOnly)
     intFields = rst.Fields.Count
 
     ' Add header row
@@ -97,19 +91,7 @@ Public Sub ExportTableDataAsTDF(strTable As String)
         If intCnt < intFields Then cData.Add vbTab
     Next fld
     cData.Add vbCrLf
-    
-    ' Stash current progress bar values so we can reuse the
-    ' progress bar to show the progress through the rows.
-    With Log.ProgressBar
-        lngProgMax = .Max
-        lngProgValue = .Value
-        ' Set to recordset after accessing all records
-        rst.MoveLast
-        .Max = rst.RecordCount
-        .Value = 1
-        rst.MoveFirst
-    End With
-    
+
     ' Add data rows
     Do While Not rst.EOF
         intCnt = 0
@@ -123,13 +105,7 @@ Public Sub ExportTableDataAsTDF(strTable As String)
         rst.MoveNext
         Log.Increment ' Increment log, in case this takes a while
     Loop
-    
-    ' Restore progress bar values for object iteration
-    With Log.ProgressBar
-         .Max = lngProgMax
-         .Value = lngProgValue
-    End With
-    
+
     ' Save output file
     WriteFile cData.GetStr, IDbComponent_BaseFolder & GetSafeFileName(StripDboPrefix(strTable)) & ".txt"
 
@@ -377,15 +353,15 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim tbl As AccessObject
     Dim cTable As clsDbTableData
+    Dim cComponent As IDbComponent
     
     ' Build collection if not already cached
-    If m_AllItems Is Nothing Or (blnModifiedOnly <> m_blnModifiedOnly) Then
-        Set m_AllItems = New Dictionary
-        m_blnModifiedOnly = blnModifiedOnly
+    If m_AllItems Is Nothing Then
+        Set m_AllItems = New Collection
         
         ' No need to go any further if we don't have any saved tables defined
         If Options.TablesToExportData.Count > 0 Then
@@ -397,8 +373,9 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
                     If .TablesToExportData.Exists(tbl.Name) Then
                         Set cTable = New clsDbTableData
                         cTable.Format = .GetTableExportFormat(CStr(.TablesToExportData(tbl.Name)("Format")))
-                        Set cTable.Parent.DbObject = tbl
-                        m_AllItems.Add cTable.Parent.SourceFile, cTable
+                        Set cComponent = cTable
+                        Set cComponent.DbObject = tbl
+                        m_AllItems.Add cComponent, tbl.Name
                     End If
                 Next tbl
             End With
@@ -419,12 +396,11 @@ End Function
 '           : a couple different file extensions involved.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then
-        Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*." & GetExtByFormat(etdTabDelimited))
-        MergeDictionary m_FileList, GetFilePathsInFolder(IDbComponent_BaseFolder, "*." & GetExtByFormat(etdXML))
-    End If
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Dim colFiles As Collection
+    Set colFiles = GetFilePathsInFolder(IDbComponent_BaseFolder, "*." & GetExtByFormat(etdTabDelimited))
+    MergeCollection colFiles, GetFilePathsInFolder(IDbComponent_BaseFolder, "*." & GetExtByFormat(etdXML))
+    Set IDbComponent_GetFileList = colFiles
 End Function
 
 
@@ -468,17 +444,6 @@ End Function
 '
 Private Sub IDbComponent_ClearOrphanedSourceFiles()
     ClearOrphanedSourceFiles Me, "xml", "txt"
-End Sub
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
 End Sub
 
 
@@ -556,7 +521,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Table Is Nothing Then Exit Property
     IDbComponent_Name = m_Table.Name
 End Property
 
@@ -569,7 +533,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_SourceFile() As String
-    If m_Table Is Nothing Then Exit Property
     IDbComponent_SourceFile = IDbComponent_BaseFolder & GetSafeFileName(m_Table.Name) & "." & GetExtByFormat(Me.Format)
 End Property
 

@@ -19,9 +19,8 @@ Option Explicit
 
 Const ModuleName As String = "clsDbTableDef"
 
-Private m_Table As AccessObject
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_Table As DAO.TableDef
+Private m_AllItems As Collection
 Private m_blnModifiedOnly As Boolean
 Private m_Dbs As Database
 
@@ -39,7 +38,7 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
+Private Sub IDbComponent_Export()
     
     Dim strFile As String
     Dim dbs As Database
@@ -49,7 +48,7 @@ Private Sub IDbComponent_Export(Optional strAlternatePath As String)
     
     Set dbs = CurrentDb
     Set tbl = dbs.TableDefs(m_Table.Name)
-    strFile = Nz2(strAlternatePath, IDbComponent_SourceFile)
+    strFile = IDbComponent_SourceFile
     
     ' For internal tables, we can export them as XML.
     If tbl.Connect = vbNullString Then
@@ -361,7 +360,8 @@ Private Sub IDbComponent_Import(strFile As String)
     
     ' Update index
     strName = GetObjectNameFromFileName(strFile)
-    Set m_Table = CurrentData.AllTables(strName)
+    Set m_Dbs = CurrentDb
+    Set m_Table = m_Dbs.TableDefs(strName)
     VCSIndex.Update Me, eatImport
     
 End Sub
@@ -519,14 +519,14 @@ End Function
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim tdf As TableDef
     Dim cTable As IDbComponent
     
     ' Build collection if not already cached
     If m_AllItems Is Nothing Or (blnModifiedOnly <> m_blnModifiedOnly) Then
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         m_blnModifiedOnly = blnModifiedOnly
         Set m_Dbs = CurrentDb
         For Each tdf In m_Dbs.TableDefs
@@ -534,11 +534,11 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
                 ' Skip system and temporary tables
             Else
                 Set cTable = New clsDbTableDef
-                Set cTable.DbObject = CurrentData.AllTables(tdf.Name)
+                Set cTable.DbObject = tdf
                 If blnModifiedOnly Then
-                    If cTable.IsModified Then m_AllItems.Add cTable.SourceFile, cTable
+                    If cTable.IsModified Then m_AllItems.Add cTable, tdf.Name
                 Else
-                    m_AllItems.Add cTable.SourceFile, cTable
+                    m_AllItems.Add cTable, tdf.Name
                 End If
             End If
         Next tdf
@@ -557,12 +557,9 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then
-        Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.xml")
-        MergeDictionary m_FileList, GetFilePathsInFolder(IDbComponent_BaseFolder, "*.json")
-    End If
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.xml")
+    MergeCollection IDbComponent_GetFileList, GetFilePathsInFolder(IDbComponent_BaseFolder, "*.json")
 End Function
 
 
@@ -580,18 +577,6 @@ End Sub
 
 
 '---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
-    RemoveOrphanedDatabaseObjects Me
-End Sub
-
-
-'---------------------------------------------------------------------------------------
 ' Procedure : IsModified
 ' Author    : Adam Waller
 ' Date      : 11/21/2020
@@ -600,7 +585,7 @@ End Sub
 '---------------------------------------------------------------------------------------
 '
 Public Function IDbComponent_IsModified() As Boolean
-    IDbComponent_IsModified = (m_Table.DateModified > VCSIndex.Item(Me).ExportDate)
+    IDbComponent_IsModified = (m_Table.LastUpdated > VCSIndex.GetExportDate(Me))
 End Function
 
 
@@ -614,8 +599,7 @@ End Function
 '---------------------------------------------------------------------------------------
 '
 Private Function IDbComponent_DateModified() As Date
-    If m_Table Is Nothing Then Exit Function
-    IDbComponent_DateModified = m_Table.DateModified
+    IDbComponent_DateModified = m_Table.LastUpdated
 End Function
 
 
@@ -665,7 +649,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Table Is Nothing Then Exit Property
     IDbComponent_Name = m_Table.Name
 End Property
 
@@ -678,24 +661,12 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_SourceFile() As String
-
-    Dim dbs As DAO.Database
-    Dim tdf As DAO.TableDef
-    
-    If m_Table Is Nothing Then Exit Property
-    
-    Set dbs = CurrentDb
-    Set tdf = dbs.TableDefs(m_Table.Name)
-    
-    ' Check connection string for linked table
-    If tdf.Connect = vbNullString Then
-        ' Internal table
+    If m_Table.Connect = vbNullString Then
         IDbComponent_SourceFile = IDbComponent_BaseFolder & GetSafeFileName(m_Table.Name) & ".xml"
     Else
         ' Linked table
         IDbComponent_SourceFile = IDbComponent_BaseFolder & GetSafeFileName(m_Table.Name) & ".json"
     End If
-    
 End Property
 
 

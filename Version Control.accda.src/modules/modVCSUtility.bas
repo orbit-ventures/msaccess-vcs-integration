@@ -354,7 +354,7 @@ Public Function GetOriginalDbFullPathFromSource(strFolder As String) As String
     Else
         ' Look up file name from VBE project file name
         Set dContents = ReadJsonFile(strPath)
-        strFile = Format(Now, "ddmmyyyy_hhmm") + " " + dNZ(dContents, "Items\FileName")
+        strFile = Format(Now, "yyyymmdd_hhmm") + " " + dNZ(dContents, "Items\FileName")
         
         ' Convert legacy relative path
         If Left$(strFile, 4) = "rel:" Then strFile = Mid$(strFile, 5)
@@ -454,6 +454,118 @@ Public Sub WriteJsonFile(strClassName As String, dItems As Dictionary, strFile A
     
     ' Write to file in Json format
     WriteFile ConvertToJson(dContents, JSON_WHITESPACE), strFile
+    
+End Sub
+
+
+'---------------------------------------------------------------------------------------
+' Procedure : ClearOrphanedSourceFolders
+' Author    : Casper Englund
+' Date      : 2020-06-04
+' Purpose   : Clears existing source folders that don't have a matching object in the
+'           : database.
+'---------------------------------------------------------------------------------------
+'
+Public Sub ClearOrphanedSourceFolders(cType As IDbComponent)
+    
+    Dim colNames As Collection
+    Dim cItem As IDbComponent
+    Dim oFolder As Folder
+    Dim oSubFolder As Folder
+    Dim strSubFolderName As String
+    
+    ' No orphaned files if the folder doesn't exist.
+    If Not FSO.FolderExists(cType.BaseFolder) Then Exit Sub
+    
+    ' Cache a list of source file names for actual database objects
+    Set colNames = New Collection
+    For Each cItem In cType.GetAllFromDB(False)
+        colNames.Add FSO.GetFileName(cItem.SourceFile)
+    Next cItem
+    
+    Set oFolder = FSO.GetFolder(cType.BaseFolder)
+    For Each oSubFolder In oFolder.SubFolders
+            
+        strSubFolderName = oSubFolder.Name
+        ' Remove any subfolder that doesn't have a matching name.
+        If Not InCollection(colNames, strSubFolderName) Then
+            ' Object not found in database. Remove subfolder.
+            oSubFolder.Delete True
+            Log.Add "  Removing orphaned folder: " & strSubFolderName, Options.ShowDebug
+        End If
+        
+    Next oSubFolder
+    
+    ' Remove base folder if we don't have any subfolders in it
+    If oFolder.SubFolders.Count = 0 Then oFolder.Delete
+    
+End Sub
+
+
+'---------------------------------------------------------------------------------------
+' Procedure : ClearOrphanedSourceFiles
+' Author    : Adam Waller
+' Date      : 2/23/2021
+' Purpose   : Clears existing source files that don't have a matching object in the
+'           : database.
+'---------------------------------------------------------------------------------------
+'
+Public Sub ClearOrphanedSourceFiles(cType As IDbComponent, ParamArray StrExtensions())
+    
+    Dim oFolder As Folder
+    Dim oFile As File
+    Dim dBaseNames As Dictionary
+    Dim dExtensions As Dictionary
+    Dim strBaseName As String
+    Dim strFile As String
+    Dim varExt As Variant
+    Dim strExt As String
+    Dim cItem As IDbComponent
+    
+    ' No orphaned files if the folder doesn't exist.
+    If Not FSO.FolderExists(cType.BaseFolder) Then Exit Sub
+    
+    ' Set up dictionary objects for case-insensitive comparison
+    Set dBaseNames = New Dictionary
+    dBaseNames.CompareMode = TextCompare
+    Set dExtensions = New Dictionary
+    dExtensions.CompareMode = TextCompare
+    
+    ' Cache a list of base source file names for actual database objects
+    Perf.OperationStart "Clear Orphaned"
+    For Each cItem In cType.GetAllFromDB(False)
+        dBaseNames.Add FSO.GetBaseName(cItem.SourceFile), vbNullString
+    Next cItem
+    
+    ' Build dictionary of allowed extensions
+    For Each varExt In StrExtensions
+        dExtensions.Add varExt, vbNullString
+    Next varExt
+        
+    ' Loop through files in folder
+    Set oFolder = FSO.GetFolder(cType.BaseFolder)
+    For Each oFile In oFolder.Files
+    
+        ' Get base name and file extension
+        ' (For performance reasons, minimize property access on oFile)
+        strFile = oFile.Name
+        strBaseName = FSO.GetBaseName(strFile)
+        strExt = Mid$(strFile, Len(strBaseName) + 2)
+        
+        ' See if extension exists in cached list
+        If dExtensions.Exists(strExt) Then
+            ' See if base file name exists in list of database objects
+            If Not dBaseNames.Exists(strBaseName) Then
+                ' Object not found in database. Remove file.
+                DeleteFile FSO.BuildPath(oFile.ParentFolder.Path, oFile.Name), True
+                Log.Add "  Removing orphaned file: " & strFile, Options.ShowDebug
+            End If
+        End If
+    Next oFile
+    
+    ' Remove base folder if we don't have any files in it
+    If oFolder.Files.Count = 0 Then oFolder.Delete True
+    Perf.OperationEnd
     
 End Sub
 

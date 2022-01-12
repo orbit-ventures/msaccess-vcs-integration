@@ -18,8 +18,7 @@ Option Compare Database
 Option Explicit
 
 Private m_Relation As DAO.Relation
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_AllItems As Collection
 Private m_Dbs As DAO.Database
 
 
@@ -49,7 +48,7 @@ End Sub
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
+Private Sub IDbComponent_Export()
     
     Dim dItem As Dictionary
     Dim dField As Dictionary
@@ -78,7 +77,7 @@ Private Sub IDbComponent_Export(Optional strAlternatePath As String)
     dItem.Add "Fields", colItems
     
     ' Write to json file
-    WriteJsonFile TypeName(Me), dItem, Nz2(strAlternatePath, IDbComponent_SourceFile), "Database relationship"
+    WriteJsonFile TypeName(Me), dItem, IDbComponent_SourceFile, "Database relationship"
     
 End Sub
 
@@ -157,7 +156,7 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim rel As Relation
     Dim cRelation As IDbComponent
@@ -170,7 +169,7 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
         ' goes out of scope. (Make sure we release this on termination)
         Set m_Dbs = CurrentDb
         
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         For Each rel In m_Dbs.Relations
             ' Navigation pane groups are handled separately
             If Not (rel.Name = "MSysNavPaneGroupsMSysNavPaneGroupToObjects" _
@@ -178,7 +177,7 @@ Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean =
                 Or IsInherited(rel)) Then
                 Set cRelation = New clsDbRelation
                 Set cRelation.DbObject = rel
-                m_AllItems.Add cRelation.SourceFile, cRelation
+                m_AllItems.Add cRelation, rel.Name
             End If
         Next rel
     End If
@@ -234,9 +233,8 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.json")
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.json")
 End Function
 
 
@@ -250,17 +248,6 @@ End Function
 Private Sub IDbComponent_ClearOrphanedSourceFiles()
     ClearFilesByExtension IDbComponent_BaseFolder, "txt"
     ClearOrphanedSourceFiles Me, "json"
-End Sub
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
 End Sub
 
 
@@ -337,7 +324,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Relation Is Nothing Then Exit Property
     IDbComponent_Name = m_Relation.Name
 End Property
 
@@ -350,7 +336,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_SourceFile() As String
-    If m_Relation Is Nothing Then Exit Property
     IDbComponent_SourceFile = IDbComponent_BaseFolder & GetRelationFileName(m_Relation) & ".json"
 End Property
 

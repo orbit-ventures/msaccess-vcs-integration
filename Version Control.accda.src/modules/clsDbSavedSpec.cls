@@ -18,8 +18,7 @@ Option Compare Database
 Option Explicit
 
 Private m_Spec As ImportExportSpecification
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_AllItems As Collection
 
 ' This requires us to use all the public methods and properties of the implemented class
 ' which keeps all the component classes consistent in how they are used in the export
@@ -35,7 +34,7 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
+Private Sub IDbComponent_Export()
     
     Dim dSpec As Dictionary
     
@@ -52,7 +51,7 @@ Private Sub IDbComponent_Export(Optional strAlternatePath As String)
     CatchAny eelNoError, vbNullString, , False
     
     ' Write as Json format.
-    WriteJsonFile TypeName(Me), dSpec, Nz2(strAlternatePath, IDbComponent_SourceFile), "Saved Import/Export Specification"
+    WriteJsonFile TypeName(Me), dSpec, IDbComponent_SourceFile, "Saved Import/Export Specification"
     
 End Sub
 
@@ -106,18 +105,18 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim spec As ImportExportSpecification
     Dim cSpec As IDbComponent
 
     ' Build collection if not already cached
     If m_AllItems Is Nothing Then
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         For Each spec In CurrentProject.ImportExportSpecifications
             Set cSpec = New clsDbSavedSpec
             Set cSpec.DbObject = spec
-            m_AllItems.Add cSpec.SourceFile, cSpec
+            m_AllItems.Add cSpec, spec.Name
         Next spec
     End If
 
@@ -134,9 +133,8 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.json")
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.json")
 End Function
 
 
@@ -149,17 +147,6 @@ End Function
 '
 Private Sub IDbComponent_ClearOrphanedSourceFiles()
     ClearOrphanedSourceFiles Me, "json"
-End Sub
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
 End Sub
 
 
@@ -237,7 +224,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Spec Is Nothing Then Exit Property
     IDbComponent_Name = m_Spec.Name
 End Property
 
@@ -250,7 +236,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_SourceFile() As String
-    If m_Spec Is Nothing Then Exit Property
     IDbComponent_SourceFile = IDbComponent_BaseFolder & GetSafeFileName(m_Spec.Name) & ".json"
 End Property
 

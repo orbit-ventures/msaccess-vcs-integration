@@ -18,8 +18,7 @@ Option Compare Database
 Option Explicit
 
 Private m_Form As AccessObject
-Private m_AllItems As Dictionary
-Private m_FileList As Dictionary
+Private m_AllItems As Collection
 Private m_blnModifiedOnly As Boolean
 
 ' This requires us to use all the public methods and properties of the implemented class
@@ -36,8 +35,8 @@ Implements IDbComponent
 ' Purpose   : Export the individual database component (table, form, query, etc...)
 '---------------------------------------------------------------------------------------
 '
-Private Sub IDbComponent_Export(Optional strAlternatePath As String)
-    SaveComponentAsText acForm, m_Form.Name, Nz2(strAlternatePath, IDbComponent_SourceFile), Me
+Private Sub IDbComponent_Export()
+    SaveComponentAsText acForm, m_Form.Name, IDbComponent_SourceFile, Me
     VCSIndex.Update Me, eatExport, GetCodeModuleHash(IDbComponent_ComponentType, m_Form.Name)
 End Sub
 
@@ -85,22 +84,22 @@ End Sub
 ' Purpose   : Return a collection of class objects represented by this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Dictionary
+Private Function IDbComponent_GetAllFromDB(Optional blnModifiedOnly As Boolean = False) As Collection
     
     Dim frm As AccessObject
     Dim cForm As IDbComponent
     
     ' Build collection if not already cached
     If m_AllItems Is Nothing Or (blnModifiedOnly <> m_blnModifiedOnly) Then
-        Set m_AllItems = New Dictionary
+        Set m_AllItems = New Collection
         m_blnModifiedOnly = blnModifiedOnly
         For Each frm In CurrentProject.AllForms
             Set cForm = New clsDbForm
             Set cForm.DbObject = frm
             If blnModifiedOnly Then
-                If cForm.IsModified Then m_AllItems.Add cForm.SourceFile, cForm
+                If cForm.IsModified Then m_AllItems.Add cForm, frm.Name
             Else
-                 m_AllItems.Add cForm.SourceFile, cForm
+                 m_AllItems.Add cForm, frm.Name
             End If
         Next frm
     End If
@@ -118,9 +117,8 @@ End Function
 ' Purpose   : Return a list of file names to import for this component type.
 '---------------------------------------------------------------------------------------
 '
-Private Function IDbComponent_GetFileList() As Dictionary
-    If m_FileList Is Nothing Then Set m_FileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.bas")
-    Set IDbComponent_GetFileList = m_FileList
+Private Function IDbComponent_GetFileList(Optional blnModifiedOnly As Boolean = False) As Collection
+    Set IDbComponent_GetFileList = GetFilePathsInFolder(IDbComponent_BaseFolder, "*.bas")
 End Function
 
 
@@ -133,18 +131,6 @@ End Function
 '
 Private Sub IDbComponent_ClearOrphanedSourceFiles()
     ClearOrphanedSourceFiles Me, "bas", "json"
-End Sub
-
-
-'---------------------------------------------------------------------------------------
-' Procedure : ClearOrphanedDatabaseObjects
-' Author    : Adam Waller
-' Date      : 11/3/2021
-' Purpose   : Remove database objects that are not represented by existing source files.
-'---------------------------------------------------------------------------------------
-'
-Public Sub IDbComponent_ClearOrphanedDatabaseObjects()
-    RemoveOrphanedDatabaseObjects Me
 End Sub
 
 
@@ -165,10 +151,10 @@ Public Function IDbComponent_IsModified() As Boolean
     
     ' Check the modified date first.
     ' (This may not reflect some code changes)
-    If m_Form.DateModified <= VCSIndex.Item(Me).ExportDate Then
+    If m_Form.DateModified <= VCSIndex.GetExportDate(Me) Then
             
         ' Date is okay, check hash
-        IDbComponent_IsModified = VCSIndex.Item(Me).Hash <> GetCodeModuleHash(IDbComponent_ComponentType, m_Form.Name)
+        IDbComponent_IsModified = VCSIndex.Item(Me)("Hash") <> GetCodeModuleHash(IDbComponent_ComponentType, m_Form.Name)
     End If
 
 End Function
@@ -184,7 +170,6 @@ End Function
 '---------------------------------------------------------------------------------------
 '
 Private Function IDbComponent_DateModified() As Date
-    If m_Form Is Nothing Then Exit Function
     IDbComponent_DateModified = m_Form.DateModified
 End Function
 
@@ -235,7 +220,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_Name() As String
-    If m_Form Is Nothing Then Exit Property
     IDbComponent_Name = m_Form.Name
 End Property
 
@@ -248,7 +232,6 @@ End Property
 '---------------------------------------------------------------------------------------
 '
 Private Property Get IDbComponent_SourceFile() As String
-    If m_Form Is Nothing Then Exit Property
     IDbComponent_SourceFile = IDbComponent_BaseFolder & GetSafeFileName(m_Form.Name) & ".bas"
 End Property
 
